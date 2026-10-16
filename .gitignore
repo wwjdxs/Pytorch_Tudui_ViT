@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.venv/
+data/
+.env
+models_vit_gpu/
+models_vit_optimized/*.pth
+!models_vit_optimized/best.pth
+models_vit_optimized/last.pth
