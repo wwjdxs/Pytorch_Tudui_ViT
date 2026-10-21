@@ -1,72 +1,87 @@
-# CIFAR10轻量ViT
+# CIFAR-10 ViT：手写模型与预训练微调
 
-本机已实际完成50轮训练：最佳验证准确率 **73.58%**（第49轮），完整测试准确率 **72.93%**，旧权重复核为58.49%，提高 **14.44个百分点**。实际训练PyTorch张量峰值约 **60.7MiB**。详情见[优化验证记录](优化验证记录.md)和[训练日志](models_vit_optimized/training.log)。
+基于PyTorch实现轻量ViT，比较训练预算、模型宽度与图像预训练迁移；提供已执行Notebook、原始实验日志和错误分析。本项目属于学习复现与实验分析，不提出新的模型架构。
 
-保持原来的48维、6层、4×4 patch，不增大网络。原8头模型和新3头模型都为175,738个参数。训练流程按数据、模型、优化器、训练、验证、保存的顺序写在ViTtrain_gpu1.py中；CPU入口只复用这个流程，避免重复维护两份代码。
+## 实验结果
 
-## 修改内容
+固定seed=42，45,000张训练/5,000张分层验证；最佳权重按验证准确率选择，官方10,000张测试集仅用于最终评估。
 
-|项目|原配置|新配置|
-|---|---|---|
-|训练轮数|10|50（增加时间，不增加峰值显存）|
-|batch|64|32|
-|注意力头数|8，每头6维|3，每头16维；参数量不变|
-|注意力实现|手动建立注意力矩阵|PyTorch SDPA，能使用融合内核时自动选择|
-|精度|FP32|CUDA训练使用FP16混合精度，参数仍为FP32|
-|数据|ToTensor、不打乱|训练随机裁剪、翻转、打乱；所有新数据标准化至约[-1,1]|
-|学习率|固定3e-4|最高5e-4，5轮预热，再余弦下降至1e-5|
-|正则化|所有参数都做weight decay|排除CLS、位置编码、bias、LayerNorm；训练标签平滑0.1|
-|权重保存|每轮一个文件|仅best.pth和last.pth|
+|方案|参数量|输入|轮数|最佳验证|最佳轮次|最终测试|
+|---|---:|---|---:|---:|---:|---:|
+|手写ViT，48维|175,738|32×32|50|73.58%|49|72.93%|
+|手写ViT，48维|175,738|32×32|150|78.64%|139|78.43%|
+|手写ViT，96维|683,242|32×32|150|82.74%|130|82.30%|
+|ImageNet预训练ViT-B/16|85,806,346|224×224|30|97.88%|29|**97.66%**|
 
-ViT本来就有LayerNorm，因此不直接照搬CNN的BatchNorm。额外加入梯度裁剪，防止偶发大梯度；zero_grad(set_to_none=True)释放旧梯度引用；AdamW设置foreach=False减少临时张量。实际计算峰值仍取决于批次大小、内核和环境。
+预训练方案同时改变外部数据、模型规模、分辨率与优化设置，提升不能归因于单个因素。每组仅运行一个随机种子，不作统计显著性结论。
 
-## 内存控制
+![准确率对比](reports/figures/02_accuracy_comparison.png)
 
-注意力分数的元素数与batch×头数×token数平方成正比：当前token数仍为65，仅batch与头数变化就将这部分的元素数降为原来的18.75%；整个模型的实际峰值还包括MLP、梯度等，不能按这个比例直接推算。
+[完整Notebook](reports/ViT实验对比报告.ipynb) · [汇总表](reports/实验汇总.csv) · [错误分析](reports/error_analysis/错误分析.md)
 
-训练/验证共用一份CIFAR10原始uint8图片，约146.5MiB，不复制另一份图片做验证，不缓存整套float32图像。ViTdata.py只有一个小型数据视图类和预处理函数，两个子集分别应用训练/验证变换。num_workers=0，不使用固定内存预取。进程总内存还包括Python、PyTorch、驱动及临时加载开销，不能只看数据数组大小。
+## 安装
 
-合成批次预热后实测：旧batch64/8头/FP32约234.89MiB，新batch32/3头/FP16约60.71MiB，均为PyTorch max_memory_allocated，降低约74.2%。保持batch64/8头/FP32、采用SDPA及新版优化器设置时约234.40MiB，差别很小；这不是严格的单因素对照，也不能将新配置的全部节省归因于SDPA。实际收益依赖批次、头数、精度和可用内核。详见[优化验证记录](优化验证记录.md)。驱动上下文与缓存另计，nvidia-smi可能显示更高数值。
+推荐Python 3.11/3.12；先按[PyTorch官方安装说明](https://pytorch.org/get-started/locally/)选择匹配的torch/torchvision及CUDA，再执行：
+
+```console
+python -m pip install -r requirements.txt
+```
+
+三组新实验记录的环境为torch 2.14.1+cu130、torchvision 0.29.1+cu130；50轮未单独记录环境。requirements是API兼容范围，不能保证所有版本数值完全一致。
 
 ## 训练
 
-选择安装了PyTorch和torchvision的环境，例如本机pytorch2.14环境。本版使用torch.amp.GradScaler和SDPA，本机已验证PyTorch 2.15.0.dev20260913+cu130。无TensorBoard、pandas、命令行参数解析或大型实验框架。
+以下命令从仓库根目录执行。默认数据目录为data/；首次加--download，已有数据可用--data-path指定。
 
-在ViTtrain_gpu1.py顶部直接修改data_path、batch_size、epoch等参数。发布版默认将数据放在仓库的data目录，首次运行自动下载；也可以通过CIFAR10_DATA环境变量指定已有数据目录。
-
-```powershell
-# 自动使用GPU，无CUDA时回退CPU
-python ViTtrain_gpu1.py
-
-# 显式使用CPU（完整训练会慢）
-python ViTtrain.py
+```console
+python ViTtrain_gpu1.py --experiment long --download
+python ViTtrain_gpu1.py --experiment wide
+python ViTtrain_gpu1.py --experiment pretrained
+python ViTtrain_gpu1.py --experiment long --epochs 50
 ```
 
-每类抽取4500张训练、500张验证，seed=42；与CNN分层划分相同。每轮只看验证集，按最佳验证准确率保存best.pth，最后保存last.pth。训练集准确率是在增强、Dropout和参数更新中统计的，不能直接当作固定模型对干净训练集的准确率。
+long默认48维150轮、5轮预热；wide仅宽度改为96维。pretrained为ImageNet-1K V1 ViT-B/16全参数微调，30轮、batch8、3轮预热，骨干学习率3e-5、分类头3e-4；首次下载约330MB预训练权重。
+可用--epochs、--batch-size、--seed、--data-path、--output-dir。CPU入口ViTtrain.py复用同一流程。
+每次独立保存experiments/<方案>/<时间戳>/，包含配置、日志、best.pth、last.pth和训练摘要。当前不保存优化器状态，不支持中断恢复。
 
-新权重和简短training.log放在本目录models_vit_optimized，不覆盖旧models_vit_gpu。再次运行会覆盖这个优化目录的同名文件，需要保留多个实验时请修改save_path。当前不保存优化器状态，不支持从中断处恢复训练。
+## 测试和单图预测
 
-## 测试
+默认仍测试仓库附带的历史50轮best.pth；其他方案需要显式指定权重，防止误读旧模型。
 
-```powershell
-python ViTtest.py
+```console
+python ViTtest.py --download
+python ViTtest.py --checkpoint experiments/wide/YOUR_RUN/best.pth
+python ViTtest.py --checkpoint experiments/pretrained/YOUR_RUN/best.pth --batch-size 8
+python ViTtest.py --checkpoint experiments/pretrained/YOUR_RUN/best.pth --image your_image.jpg
 ```
 
-默认读取新best.pth，用完整官方测试集做最终评估。模型文件中保存少量配置，包括头数和标准化标识，测试自动使用相同设置。设置ViTtest.py中的img_path可预测图片，也可用VIT_IMAGE环境变量指定图片。
+--data-path指定CIFAR目录，--no-analysis仅评估。兼容CIFAR10_DATA、VIT_CHECKPOINT、VIT_IMAGE环境变量。
+测试结果追加到权重同目录training.log；analysis/<时间戳>/保存混淆矩阵、Recall/Precision/F1、错误索引和原图。summary.json是训练摘要，其test_accuracy可能仍为null，以测试日志和analysis/test_metrics.json为准。
+测试加载已有checkpoint，不重新下载ImageNet权重。类别顺序：airplane、automobile、bird、cat、deer、dog、frog、horse、ship、truck。
 
-复核旧8头、只用ToTensor的权重：
+## 报告与检查
 
-```powershell
-$env:VIT_CHECKPOINT = "你的旧权重目录\vit9.pth"
-python ViTtest.py
-Remove-Item Env:VIT_CHECKPOINT
+```console
+jupyter lab reports/ViT实验对比报告.ipynb
+python tools/execute_report.py
+python -m unittest discover -s tests -v
 ```
 
-旧版纯state_dict会按原默认8头、无标准化加载，新版按文件中的配置加载。虽然不同头数的参数形状相同，计算方式仍不同，所以不能忽略头数配置。原权重复核为58.49%，平均测试loss为1.1425。
+Notebook已嵌入四组马卡龙配色图表，可直接在GitHub查看；日志和配置位于reports/data/，PNG/SVG位于reports/figures/。仅重绘报告不需要PyTorch。
+种子42覆盖初始化、CUDA、分层划分和数据加载生成器；未开启严格确定性算法，换硬件/软件可能产生差异。训练准确率包含增强和dropout；训练loss含标签平滑，不能直接与验证/测试普通交叉熵比较。
+耗时为日志训练与验证循环之和，不含外部预训练成本；显存为PyTorch张量峰值，不是驱动或整机占用。硬件负载未完全控制，成本图只作描述。
 
-仓库仅附带最佳权重和训练日志；last.pth和旧models_vit_gpu未上传。旧权重复核命令需要自行提供原文件。请先执行 `pip install -r requirements.txt`，GPU版PyTorch请按官方安装指引选择与你设备匹配的版本。
+## 文件与权重
 
-本轮优化同时改变了训练预算、数据与优化设置，属于组合方案，不是各因素的独立消融实验；准确率提升幅度需以完成后的实测为准。不要根据官方测试集反复调参。CNN目录保持不变。
+仓库保留历史50轮的小型best.pth，其余大权重、数据集、训练输出不提交Git。新权重可通过训练生成，本地发布附件见[发布说明](RELEASE_NOTES.md)。
+错误分析只发布统计、矩阵及官方测试集索引，不分发CIFAR原图；运行测试可本地生成。最佳模型错234张，其中猫→狗和狗→猫各30张。
+历史优化细节见[优化验证记录](优化验证记录.md)。
 
-实现参考：[PyTorch SDPA](https://docs.pytorch.org/docs/2.14/generated/torch.nn.functional.scaled_dot_product_attention.html)、[混合精度训练](https://docs.pytorch.org/docs/2.14/notes/amp_examples.html)。
+## 来源
 
+- [ViT原论文](https://arxiv.org/abs/2010.11929)：模型架构思想。
+- [Torchvision ViT-B/16](https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.vit_b_16.html)：标准模型、预训练权重和预处理。
+- [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html)：数据集。
+- [Happy-LLM](https://github.com/datawhalechina/happy-llm)：预训练/微调学习思路参考，不是视觉权重来源。
+
+轻量ViT沿用本仓库早期学习实现，新增SDPA、AMP、三种实验配置、迁移学习、错误分析和报告。上游代码、模型与数据遵循各自许可；本次未新增独立开源许可证。

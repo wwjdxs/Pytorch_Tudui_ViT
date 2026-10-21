@@ -1,0 +1,24 @@
+{
+  "experiment": "wide",
+  "model_type": "custom",
+  "model_config": {
+    "embed_dim": 96,
+    "depth": 6,
+    "num_head": 3,
+    "patch_size": 4,
+    "drop": 0.1
+  },
+  "epochs": 150,
+  "warmup_epochs": 5,
+  "batch_size": 32,
+  "seed": 42,
+  "data_path": "<local CIFAR-10 data directory>",
+  "backbone_lr": 0.0005,
+  "head_lr": 0.0005,
+  "weight_decay": 0.05,
+  "label_smoothing": 0.1,
+  "pretrained_weights": null,
+  "device": "cuda",
+  "torch_version": "2.14.1+cu130",
+  "torchvision_version": "0.29.1+cu130"
+}

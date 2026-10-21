@@ -1,0 +1,62 @@
+{
+  "checkpoint": "pretrained ViT-B/16, best validation checkpoint, epoch 29",
+  "epoch": 29,
+  "samples": 10000,
+  "correct": 9766,
+  "errors": 234,
+  "accuracy": 0.9766,
+  "mean_loss": 0.18765023262500763,
+  "macro_f1": 0.9765959940482439,
+  "top_confusions": [
+    {
+      "count": 30,
+      "actual": "dog",
+      "predicted": "cat"
+    },
+    {
+      "count": 30,
+      "actual": "cat",
+      "predicted": "dog"
+    },
+    {
+      "count": 21,
+      "actual": "truck",
+      "predicted": "automobile"
+    },
+    {
+      "count": 13,
+      "actual": "bird",
+      "predicted": "cat"
+    },
+    {
+      "count": 11,
+      "actual": "airplane",
+      "predicted": "ship"
+    },
+    {
+      "count": 8,
+      "actual": "horse",
+      "predicted": "deer"
+    },
+    {
+      "count": 8,
+      "actual": "deer",
+      "predicted": "cat"
+    },
+    {
+      "count": 8,
+      "actual": "cat",
+      "predicted": "frog"
+    },
+    {
+      "count": 8,
+      "actual": "automobile",
+      "predicted": "truck"
+    },
+    {
+      "count": 7,
+      "actual": "dog",
+      "predicted": "deer"
+    }
+  ]
+}

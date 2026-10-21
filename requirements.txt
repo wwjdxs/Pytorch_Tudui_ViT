@@ -1,3 +1,10 @@
-torch>=2.3
-torchvision>=0.18
+# 安装时使用匹配的torch/torchvision版本；CUDA请按PyTorch官方安装指令选择。
+torch>=2.4
+torchvision>=0.19
+numpy>=1.26
 Pillow>=10
+matplotlib>=3.8
+nbformat>=5.10
+nbclient>=0.10
+ipykernel>=6.29
+jupyterlab>=4.2

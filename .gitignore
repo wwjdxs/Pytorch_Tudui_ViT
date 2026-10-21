@@ -1,9 +1,12 @@
 __pycache__/
 *.py[cod]
 .venv/
-data/
 .env
-models_vit_gpu/
-models_vit_optimized/*.pth
+.ipynb_checkpoints/
+/data/
+/experiments/
+*.pth
 !models_vit_optimized/best.pth
-models_vit_optimized/last.pth
+*.pt
+.DS_Store
+/release_artifacts/

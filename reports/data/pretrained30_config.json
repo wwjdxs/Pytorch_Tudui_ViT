@@ -1,0 +1,20 @@
+{
+  "experiment": "pretrained",
+  "model_type": "torchvision_vit_b_16",
+  "model_config": {
+    "num_classes": 10
+  },
+  "epochs": 30,
+  "warmup_epochs": 3,
+  "batch_size": 8,
+  "seed": 42,
+  "data_path": "<local CIFAR-10 data directory>",
+  "backbone_lr": 3e-05,
+  "head_lr": 0.00030000000000000003,
+  "weight_decay": 0.05,
+  "label_smoothing": 0.1,
+  "pretrained_weights": "IMAGENET1K_V1",
+  "device": "cuda",
+  "torch_version": "2.14.1+cu130",
+  "torchvision_version": "0.29.1+cu130"
+}
